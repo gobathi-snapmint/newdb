@@ -190,3 +190,5 @@ code { background: var(--surface2); padding: 1px 5px; border-radius: 4px; font-s
 .chip.on .swatch { opacity: 1; }
 .grid-auto { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; }
 @media (max-width: 720px) { .grid-auto { grid-template-columns: 1fr; } }
+.link { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; text-align: left; }
+.link:hover { text-decoration: underline; }

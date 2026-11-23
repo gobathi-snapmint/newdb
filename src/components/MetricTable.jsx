@@ -16,7 +16,7 @@ export const VIEWS = [
  * Group-wise metric table for the current period compared with the previous one.
  * Clicking a cell opens the delta explorer for that metric (drilled into the group).
  */
-export function MetricTable({ currRows, prevRows, dim, metrics = METRICS.map((m) => m.key), onExplore, view: viewProp, onViewChange, title, maxRows }) {
+export function MetricTable({ currRows, prevRows, dim, metrics = METRICS.map((m) => m.key), onExplore, onGroupClick, view: viewProp, onViewChange, title, maxRows }) {
   const [viewState, setViewState] = useState('summary');
   const view = viewProp ?? viewState;
   const setView = onViewChange ?? setViewState;
@@ -110,7 +110,7 @@ export function MetricTable({ currRows, prevRows, dim, metrics = METRICS.map((m)
           <tbody>
             {shown.map((r) => (
               <tr key={r.group}>
-                <td title={r.group}>{r.group}{!r.hasCurr && <span className="pill" style={{ marginLeft: 6 }}>prev only</span>}</td>
+                <td title={r.group}>{onGroupClick ? <button className="link" onClick={() => onGroupClick(r.group)}>{r.group}</button> : r.group}{!r.hasCurr && <span className="pill" style={{ marginLeft: 6 }}>prev only</span>}</td>
                 {metrics.map((m) => <td key={m} className="click" onClick={() => onExplore?.(m, dim, r.group)}>{cell(r, m)}</td>)}
               </tr>
             ))}

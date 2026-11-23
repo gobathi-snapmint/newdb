@@ -34,7 +34,7 @@ export const monthLabel = (mk) => parseKey(`${mk}-01`).toLocaleDateString('en-IN
 export const dayLabel = (k) => parseKey(k).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' });
 
 // Time buckets for trend charts (weeks start on Monday)
-const weekStart = (k) => { const d = parseKey(k); const off = (d.getDay() + 6) % 7; return toKey(new Date(d.getFullYear(), d.getMonth(), d.getDate() - off)); };
+export const weekStart = (k) => { const d = parseKey(k); const off = (d.getDay() + 6) % 7; return toKey(new Date(d.getFullYear(), d.getMonth(), d.getDate() - off)); };
 export const BUCKET = { day: (r) => r.dateKey, week: (r) => weekStart(r.dateKey), month: (r) => r.monthKey };
 export const bucketLabel = (g, k) => (g === 'month' ? monthLabel(k) : g === 'week' ? `Wk ${dayLabel(k)}` : dayLabel(k));
 const rangeLabel = (a, b) => (a === b ? dayLabel(a) : `${dayLabel(a)} – ${dayLabel(b)}`);

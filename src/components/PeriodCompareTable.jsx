@@ -23,8 +23,9 @@ export function monthsAgoColumns(from, to, n) {
  * Each column's dates can be edited. Clicking a cell opens the Delta Explorer for
  * target vs that column.
  */
-export function PeriodCompareTable({ columns: defaultCols, editable = true, avgLabel }) {
-  const { filtered, setPeriod, explore } = useApp();
+export function PeriodCompareTable({ columns: defaultCols, editable = true, avgLabel, rows, onOpen }) {
+  const { filtered: allFiltered, setPeriod, explore } = useApp();
+  const filtered = rows || allFiltered;
   const [edits, setEdits] = useState({});
   const [view, setView] = useState('values');
   const sig = defaultCols.map((c) => `${c.key}${c.from}${c.to}`).join('|');
@@ -47,7 +48,7 @@ export function PeriodCompareTable({ columns: defaultCols, editable = true, avgL
 
   const open = (metric, col) => {
     setPeriod((p) => ({ ...p, mode: 'mtd', from: cols[0].from, to: cols[0].to, compare: 'custom', cFrom: col.from, cTo: col.to }));
-    explore(metric, 'channel');
+    if (onOpen) onOpen(metric); else explore(metric, 'channel');
   };
 
   const cell = (m, v) => {

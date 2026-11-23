@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BarChart3, ChartLine, Database, GitCompareArrows, LayoutDashboard, ListTree, Moon, Sun, CalendarRange, Table2 } from 'lucide-react';
+import { BarChart3, ChartLine, Route, Database, GitCompareArrows, LayoutDashboard, ListTree, Moon, Sun, CalendarRange, Table2 } from 'lucide-react';
 import { AppProvider, useApp } from './state';
 import { FilterBar } from './components/FilterBar';
 import { Overview } from './pages/Overview';
@@ -9,6 +9,7 @@ import { MonthOnMonth } from './pages/MonthOnMonth';
 import { Trends } from './pages/Trends';
 import { VisualPerformance } from './pages/VisualPerformance';
 import { Campaigns } from './pages/Campaigns';
+import { Journeys } from './pages/Journeys';
 import { DataPage } from './pages/DataPage';
 import { dayLabel } from './lib/filters';
 
@@ -17,6 +18,7 @@ const TABS = [
   { id: 'compare', label: 'Comparisons', icon: GitCompareArrows, page: Compare },
   { id: 'delta', label: 'Delta Explorer', icon: ListTree, page: DeltaExplorer },
   { id: 'mom', label: 'Month on Month', icon: CalendarRange, page: MonthOnMonth, noFilterPeriod: true },
+  { id: 'journeys', label: 'Journeys', icon: Route, page: Journeys },
   { id: 'visual', label: 'Visual Performance', icon: ChartLine, page: VisualPerformance },
   { id: 'trends', label: 'Visual Trends', icon: BarChart3, page: Trends },
   { id: 'campaigns', label: 'Campaigns', icon: Table2, page: Campaigns },
