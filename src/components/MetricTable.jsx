@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Download } from 'lucide-react';
+import { Fragment, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, Download } from 'lucide-react';
 import { METRICS, aggregate, attribute, delta, fmt, fmtDelta, fmtPct, groupBy, metricsOf, tone } from '../lib/metrics';
 import { DIM } from '../lib/filters';
 import { DeltaText, Seg } from './ui';
@@ -16,11 +16,13 @@ export const VIEWS = [
  * Group-wise metric table for the current period compared with the previous one.
  * Clicking a cell opens the delta explorer for that metric (drilled into the group).
  */
-export function MetricTable({ currRows, prevRows, dim, metrics = METRICS.map((m) => m.key), onExplore, onGroupClick, view: viewProp, onViewChange, title, maxRows }) {
+export function MetricTable({ currRows, prevRows, dim, metrics = METRICS.map((m) => m.key), onExplore, onGroupClick, renderExpanded, view: viewProp, onViewChange, title, maxRows }) {
   const [viewState, setViewState] = useState('summary');
   const view = viewProp ?? viewState;
   const setView = onViewChange ?? setViewState;
   const [sort, setSort] = useState({ key: 'sent', dir: -1 });
+  const [open, setOpen] = useState(() => new Set());
+  const toggle = (g) => setOpen((s) => { const n = new Set(s); if (n.has(g)) n.delete(g); else n.add(g); return n; });
   const get = DIM[dim].get;
 
   const data = useMemo(() => {
@@ -96,7 +98,7 @@ export function MetricTable({ currRows, prevRows, dim, metrics = METRICS.map((m)
           <button className="btn" onClick={exportCsv}><Download size={13} /> CSV</button>
         </div>
       </div>
-      <div className="table-wrap">
+      <div className="table-wrap" style={renderExpanded ? { maxHeight: 'none' } : undefined}>
         <table className="t">
           <thead>
             <tr>
@@ -109,10 +111,17 @@ export function MetricTable({ currRows, prevRows, dim, metrics = METRICS.map((m)
           </thead>
           <tbody>
             {shown.map((r) => (
-              <tr key={r.group}>
-                <td title={r.group}>{onGroupClick ? <button className="link" onClick={() => onGroupClick(r.group)}>{r.group}</button> : r.group}{!r.hasCurr && <span className="pill" style={{ marginLeft: 6 }}>prev only</span>}</td>
+              <Fragment key={r.group}>
+              <tr className={open.has(r.group) ? 'expanded' : ''}>
+                <td title={r.group}>
+                  {renderExpanded && <button className="expander" onClick={() => toggle(r.group)} title="Show breakdown">{open.has(r.group) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</button>}
+                  {onGroupClick || renderExpanded ? <button className="link" onClick={() => (onGroupClick ? onGroupClick(r.group) : toggle(r.group))}>{r.group}</button> : r.group}{!r.hasCurr && <span className="pill" style={{ marginLeft: 6 }}>prev only</span>}</td>
                 {metrics.map((m) => <td key={m} className="click" onClick={() => onExplore?.(m, dim, r.group)}>{cell(r, m)}</td>)}
               </tr>
+              {renderExpanded && open.has(r.group) && (
+                <tr className="expand-row"><td colSpan={metrics.length + 1}><div className="expand-body">{renderExpanded(r.group)}</div></td></tr>
+              )}
+              </Fragment>
             ))}
             <tr className="total">
               <td>Total</td>

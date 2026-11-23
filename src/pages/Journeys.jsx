@@ -129,8 +129,9 @@ function CatalogTab({ j, openDeep }) {
   const [metric, setMetric] = useState('cpo');
   return (
     <div className="stack">
-      <Card title="Every journey — all metrics" sub="Current period with the change vs previous. Click a journey name for its deep dive; click a number to see what drove it.">
-        <MetricTable currRows={j.curr} prevRows={j.prev} dim="journeyName" onExplore={(m, _d, g) => j.open(m, g)} onGroupClick={openDeep} title="Journeys" />
+      <Card title="Every journey — all metrics" sub="Current period with the change vs previous. Click ▸ or a journey name to expand its channel-level and day-level breakdown; click a number to see what drove it.">
+        <MetricTable currRows={j.curr} prevRows={j.prev} dim="journeyName" onExplore={(m, _d, g) => j.open(m, g)} title="Journeys"
+          renderExpanded={(name) => <JourneyExpand j={j} name={name} openDeep={openDeep} />} />
       </Card>
       <Card title={`${METRIC[metric].label}: journey × channel`} sub="Current period value, with Δ % vs previous underneath"
         right={<Select value={metric} onChange={setMetric} options={CHART_METRICS.map((m) => [m.key, m.label])} />}>
@@ -140,6 +141,33 @@ function CatalogTab({ j, openDeep }) {
         <CrossTable j={j} metric={metric} col={(r) => r.audience} openDeep={openDeep} />
       </Card>
     </div>
+  );
+}
+
+// Inline breakdown under a catalog row: the journey's channels and days, every metric
+function JourneyExpand({ j, name, openDeep }) {
+  const { periods } = useApp();
+  const curr = useMemo(() => j.curr.filter((r) => r.journeyName === name), [j.curr, name]);
+  const prev = useMemo(() => j.prev.filter((r) => r.journeyName === name), [j.prev, name]);
+  const steps = new Set(curr.map((r) => r.id)).size;
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span className="hint">
+          <b style={{ color: 'var(--text)' }}>{name}</b> · {curr[0]?.journeyType || '—'} · {steps} campaigns/steps · {[...new Set(curr.map((r) => r.channel))].join(', ')} · {periods.curr.label} vs {periods.prev.label}
+        </span>
+        <button className="btn" onClick={() => openDeep(name)}>Open deep dive →</button>
+      </div>
+      <div>
+        <h4>Channel level</h4>
+        <MetricTable currRows={curr} prevRows={prev} dim="channel" onExplore={(m) => j.open(m, name)} title={`${name} by channel`} />
+      </div>
+      <div>
+        <h4>Step / campaign level</h4>
+        <MetricTable currRows={curr} prevRows={prev} dim="campaign" onExplore={(m) => j.open(m, name)} title={`${name} by step`} />
+      </div>
+      <TimeTable rows={curr} title={`${name} — day level (${periods.curr.label})`} defaultGran="day" />
+    </>
   );
 }
 

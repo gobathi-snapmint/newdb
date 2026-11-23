@@ -192,3 +192,8 @@ code { background: var(--surface2); padding: 1px 5px; border-radius: 4px; font-s
 @media (max-width: 720px) { .grid-auto { grid-template-columns: 1fr; } }
 .link { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; text-align: left; }
 .link:hover { text-decoration: underline; }
+.expander { background: none; border: 0; padding: 0 4px 0 0; cursor: pointer; color: var(--muted); vertical-align: -2px; }
+.t tr.expanded td { background: var(--accent-soft); }
+.t tr.expand-row > td { position: static; max-width: none; overflow: visible; font-weight: 400; padding: 0; background: var(--surface2); white-space: normal; text-align: left; }
+.expand-body { padding: 14px 16px; position: sticky; left: 0; max-width: min(100%, calc(100vw - 330px)); display: flex; flex-direction: column; gap: 14px; }
+.expand-body h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
