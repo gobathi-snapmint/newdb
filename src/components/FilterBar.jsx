@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { RotateCcw } from 'lucide-react';
 import { useApp } from '../state';
 import { SOURCES } from '../lib/data';
-import { DIM, monthLabel } from '../lib/filters';
+import { AVG_MONTHS, DIM, monthLabel } from '../lib/filters';
 import { Field, MultiSelect, Seg, Select } from './ui';
 
 function optionsFor(rows, key) {
@@ -47,7 +47,7 @@ export function FilterBar({ hidePeriod }) {
             </Field>
             <Field label="Compare with">
               <Select value={period.compare} onChange={(compare) => set({ compare })}
-                options={[['prevMonth', 'Same dates last month'], ['prevPeriod', 'Previous period (same length)'], ['custom', 'Custom range']]} />
+                options={[['prevMonth', 'Same dates last month'], ...AVG_MONTHS.map((n) => [`avg${n}`, `Avg of last ${n} months (same dates)`]), ['prevPeriod', 'Previous period (same length)'], ['custom', 'Custom range']]} />
             </Field>
             {period.compare === 'custom' && (
               <>
@@ -59,7 +59,8 @@ export function FilterBar({ hidePeriod }) {
         ) : (
           <>
             <Field label="Month"><Select value={period.month} onChange={(month) => set({ month })} options={monthOpts} /></Field>
-            <Field label="Compare with month"><Select value={period.compareMonth} onChange={(compareMonth) => set({ compareMonth })} options={monthOpts} /></Field>
+            <Field label="Compare with"><Select value={period.compareMonth} onChange={(compareMonth) => set({ compareMonth })}
+              options={[...AVG_MONTHS.map((n) => [`avg${n}`, `Avg of last ${n} months`]), ...monthOpts]} /></Field>
           </>
         )}
         <div className="period-chip" style={{ marginLeft: 'auto', paddingBottom: 6 }}>

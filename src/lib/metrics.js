@@ -36,7 +36,8 @@ export function emptyAgg() {
 
 export function addRow(a, r) {
   a.sent += r.sent; a.delivered += r.delivered; a.clicks += r.clicks; a.orders += r.orders;
-  a.cost += r.cost; a.gtv += r.gtv; a.revenue += r.revenue; a.ids.add(r.source + r.id);
+  a.cost += r.cost; a.gtv += r.gtv; a.revenue += r.revenue; a.ids.add(r.source + r.id + (r.slot || ''));
+  if (r.w) a.w = r.w; // averaged baseline rows: campaigns = distinct per month × 1/n
   return a;
 }
 
@@ -60,7 +61,7 @@ const div = (n, d) => (d ? n / d : null);
 
 export function value(agg, key) {
   if (!agg) return null;
-  if (key === 'campaigns') return agg.ids ? agg.ids.size : 0;
+  if (key === 'campaigns') return agg.ids ? Math.round(agg.ids.size * (agg.w || 1)) : 0;
   const m = METRIC[key] || HELPERS[key];
   if (!m) return agg[key] ?? null;
   if (m.num) {
@@ -170,6 +171,7 @@ function sumGroups(groups) {
   for (const g of groups.values()) {
     BASE_FIELDS.forEach((f) => { a[f] += g[f]; });
     g.ids.forEach((id) => a.ids.add(id));
+    if (g.w) a.w = g.w;
   }
   return a;
 }

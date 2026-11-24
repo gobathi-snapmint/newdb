@@ -21,6 +21,7 @@ function mergeAggs(list) {
   list.forEach((g) => {
     ['sent', 'delivered', 'clicks', 'orders', 'cost', 'gtv', 'revenue'].forEach((f) => { a[f] += g[f]; });
     g.ids.forEach((id) => a.ids.add(id));
+    if (g.w) a.w = g.w;
   });
   return a;
 }

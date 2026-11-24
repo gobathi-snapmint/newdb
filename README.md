@@ -46,7 +46,7 @@ Every table cell is clickable and opens the Delta Explorer for that metric (and 
 
 ## Filters
 
-- **Period**: *MTD / Date range* (from–to, compared with same dates last month, the previous period of equal length, or a custom range) or *Month on Month* (pick a month and the month to compare with).
+- **Period**: *MTD / Date range* (from–to, compared with same dates last month, the **average of the same dates over the last 3 / 6 / 12 months**, the previous period of equal length, or a custom range) or *Month on Month* (pick a month and compare with another month or the **average of the last 3 / 6 / 12 full months**). Averages are monthly: counts (sent, cost, orders …) are divided by the number of months, campaigns are the average distinct campaigns per month, and rates are recomputed from those totals. Only months that have data are averaged (the label says so when fewer are available). Every page, including Storyboard and Review Report, uses the chosen baseline.
 - **Source, Campaign type, Audience type, Channel, Product segment, Segment** (multi-select) and **Experimental** (All / BAU only / Experimental only).
 
 ## Metric definitions

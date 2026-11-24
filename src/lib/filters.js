@@ -39,9 +39,25 @@ export const BUCKET = { day: (r) => r.dateKey, week: (r) => weekStart(r.dateKey)
 export const bucketLabel = (g, k) => (g === 'month' ? monthLabel(k) : g === 'week' ? `Wk ${dayLabel(k)}` : dayLabel(k));
 const rangeLabel = (a, b) => (a === b ? dayLabel(a) : `${dayLabel(a)} – ${dayLabel(b)}`);
 
+export const AVG_MONTHS = [3, 6, 12];
+
+// Baseline = the average of the same dates (or the whole month) over the last n months.
+// `ranges[0]` is the most recent month; its dates are the frame the averaged rows are mapped onto.
+function averagePrev(curr, n, wholeMonths) {
+  const ranges = Array.from({ length: n }, (_, i) => ({ from: shiftMonth(curr.from, -(i + 1)), to: shiftMonth(curr.to, -(i + 1)), shift: i }));
+  const first = ranges[n - 1], last = ranges[0];
+  const span = wholeMonths ? `${monthLabel(first.from.slice(0, 7))} – ${monthLabel(last.from.slice(0, 7))}` : `same dates, ${dayLabel(first.from)} – ${dayLabel(last.to)}`;
+  return { from: last.from, to: last.to, ranges, avg: n, label: `Avg of last ${n} months (${span})` };
+}
+
 export function computePeriods(p) {
+  const avg = Number((/^avg(\d+)$/.exec(p.mode === 'mom' ? p.compareMonth : p.compare) || [])[1]) || 0;
   if (p.mode === 'mom') {
     const [cy, cm] = p.month.split('-').map(Number);
+    if (avg) {
+      const curr = { from: `${p.month}-01`, to: toKey(new Date(cy, cm - 1, lastDay(cy, cm - 1))), label: monthLabel(p.month) };
+      return { curr, prev: averagePrev(curr, avg, true) };
+    }
     const [py, pm] = p.compareMonth.split('-').map(Number);
     return {
       curr: { from: `${p.month}-01`, to: toKey(new Date(cy, cm - 1, lastDay(cy, cm - 1))), label: monthLabel(p.month) },
@@ -50,6 +66,10 @@ export function computePeriods(p) {
   }
   const curr = { from: p.from, to: p.to };
   let prev;
+  if (avg) {
+    curr.label = rangeLabel(curr.from, curr.to);
+    return { curr, prev: averagePrev(curr, avg, false) };
+  }
   if (p.compare === 'custom') prev = { from: p.cFrom, to: p.cTo };
   else if (p.compare === 'prevPeriod') {
     const days = Math.round((parseKey(p.to) - parseKey(p.from)) / 864e5) + 1;
