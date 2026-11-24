@@ -255,3 +255,4 @@ code { background: var(--surface2); padding: 1px 5px; border-radius: 4px; font-s
   .rv-section { page-break-before: always; box-shadow: none; }
   .rv-breakup { break-inside: avoid; }
 }
+.rv-mom { font-size: 10.5px; font-weight: 600; }

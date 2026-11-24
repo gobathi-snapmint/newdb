@@ -2,7 +2,7 @@
 // a day-by-day trend (current vs previous period, aligned by day) and breakdowns
 // by product line, channel, audience and campaign type.
 import { METRIC, aggregate, attribute, delta, emptyAgg, addRow, fmt, fmtDelta, fmtPct, groupBy, value } from './metrics';
-import { DIM, dayLabel } from './filters';
+import { DIM, dayLabel, monthLabel } from './filters';
 
 export const REVIEW_METRICS = ['cost', 'sent', 'delivered', 'clicks', 'orders', 'gtv', 'deliveryRate', 'ctr', 'cvr', 'cir', 'cpo'];
 export const EXTRA_METRICS = ['revenue', 'cpc', 'campaigns'];
@@ -113,3 +113,110 @@ export function scopeKpis(curr, prev) {
 
 export const scopeTitle = (s) => (s.product ? `${s.product}${s.audience ? ` ${s.audience}` : ''}` : s.audience ? `Overall ${s.audience}` : 'Overall');
 export const scopeFilter = (s) => (r) => (!s.product || r.product === s.product) && (!s.audience || r.audience === s.audience);
+
+// ---------- Month-on-month (trend) report ----------
+const pad2 = (n) => String(n).padStart(2, '0');
+const lastDayOf = (mk) => { const [y, m] = mk.split('-').map(Number); return new Date(y, m, 0).getDate(); };
+
+/**
+ * Month windows from `from` to `to` (month keys).
+ * sameDates: every month uses day 1..D, where D is the last day with data in the final month (MTD-style, like for like).
+ * Otherwise full months; a month that is still running is cut at the latest data date and marked MTD.
+ */
+export function monthRanges(months, from, to, sameDates, maxDate) {
+  const sel = months.filter((m) => m >= from && m <= to);
+  if (!sel.length) return [];
+  const latest = maxDate.slice(0, 7), dataDay = +maxDate.slice(8);
+  const endMonth = sel[sel.length - 1];
+  const D = endMonth === latest ? dataDay : lastDayOf(endMonth);
+  return sel.map((mk) => {
+    const last = lastDayOf(mk);
+    let end = last, tag = '';
+    if (sameDates && D < lastDayOf(endMonth)) { end = Math.min(D, last); tag = ` (1–${end})`; }
+    else if (mk === latest && dataDay < last) { end = dataDay; tag = ' (MTD)'; }
+    return { key: mk, label: `${monthLabel(mk)}${tag}`, short: monthLabel(mk), from: `${mk}-01`, to: `${mk}-${pad2(end)}` };
+  });
+}
+
+function bucketByMonth(rows, ranges) {
+  const idx = new Map(ranges.map((r, i) => [r.key, i]));
+  const out = ranges.map(() => []);
+  rows.forEach((r) => {
+    const i = idx.get(r.dateKey.slice(0, 7));
+    if (i != null && r.dateKey <= ranges[i].to) out[i].push(r);
+  });
+  return out;
+}
+
+const pctChange = (a, b) => (a == null || b == null || !b ? null : ((a - b) / Math.abs(b)) * 100);
+
+export function buildTrendReport(rows, ranges, { metrics = REVIEW_METRICS, dims = REVIEW_DIMS, topN = 8 } = {}) {
+  const byMonth = bucketByMonth(rows, ranges);
+  const aggs = byMonth.map(aggregate);
+  const groups = Object.fromEntries(dims.map((d) => [d, byMonth.map((rs) => groupBy(rs, DIM[d].get))]));
+  const first = 0, last = ranges.length - 1;
+
+  const sections = metrics.map((key) => {
+    const m = METRIC[key];
+    const isCount = m.kind === 'count';
+    const values = aggs.map((a) => (a.sent || a.cost ? value(a, key) : null));
+    const breakdowns = dims.map((dim) => {
+      const maps = groups[dim];
+      const names = new Set(maps.flatMap((g) => [...g.keys()]));
+      const sizeKey = isCount ? key : 'sent';
+      const size = (g) => maps.reduce((s, mp) => s + (mp.has(g) ? value(mp.get(g), sizeKey) || 0 : 0), 0);
+      const sorted = [...names].sort((a, b) => size(b) - size(a));
+      const top = sorted.slice(0, topN), rest = sorted.slice(topN);
+      const series = top.map((g) => ({ group: g, values: maps.map((mp) => (mp.has(g) ? value(mp.get(g), key) : null)) }));
+      if (rest.length) {
+        series.push({ group: `Others (${rest.length})`, others: true, values: maps.map((mp) => {
+          const list = rest.filter((g) => mp.has(g)).map((g) => mp.get(g));
+          return list.length ? value(mergeAggs(list), key) : null;
+        }) });
+      }
+      series.forEach((s) => { s.change = pctChange(s.values[last], s.values[first]); s.mom = last > 0 ? pctChange(s.values[last], s.values[last - 1]) : null; });
+      let summary = '';
+      if (last > 0) {
+        const att = attribute(key, maps[last], maps[first]).rows.filter((r) => Math.abs(r.contrib) > 1e-9);
+        const up = [...att].sort((a, b) => b.contrib - a.contrib)[0], down = [...att].sort((a, b) => a.contrib - b.contrib)[0];
+        const bit = (r) => `${r.group} (${fmtDelta(key, r.contrib, { short: true })})`;
+        const parts = [];
+        if (up?.contrib > 0) parts.push(`biggest push up ${bit(up)}`);
+        if (down?.contrib < 0) parts.push(`biggest pull down ${bit(down)}`);
+        if (parts.length) summary = `By ${DIM_TITLE[dim].toLowerCase()}, ${ranges[first].short} → ${ranges[last].short}: ${parts.join('; ')}.`;
+      }
+      return { dim, title: DIM_TITLE[dim], series, summary };
+    });
+    return { key, title: sectionTitle(key), overallTitle: overallTitle(key), isCount, values, breakdowns };
+  });
+  return {
+    mode: 'trend', ranges, sections,
+    periodLabel: `${ranges[0]?.label} → ${ranges[last]?.label}, month on month`,
+  };
+}
+
+// Draft for a trend section's insight box.
+export function draftTrendSection(s, ranges) {
+  const v = s.values, n = v.length - 1;
+  const lines = [];
+  const ok = v.map((x, i) => [x, i]).filter(([x]) => x != null);
+  if (ok.length) {
+    const hi = ok.reduce((a, b) => (b[0] > a[0] ? b : a)), lo = ok.reduce((a, b) => (b[0] < a[0] ? b : a));
+    lines.push(`${s.overallTitle}: ${fmt(s.key, v[0])} in ${ranges[0].short} → ${fmt(s.key, v[n])} in ${ranges[n].short} (${fmtPct(pctChange(v[n], v[0]))}). Highest in ${ranges[hi[1]].short} (${fmt(s.key, hi[0])}), lowest in ${ranges[lo[1]].short} (${fmt(s.key, lo[0])}).`);
+    if (n > 0) lines.push(`Latest month vs the one before: ${fmtPct(pctChange(v[n], v[n - 1]))}.`);
+  }
+  s.breakdowns.forEach((b) => { if (b.summary) lines.push(`• ${b.summary}`); });
+  return lines.join('\n');
+}
+
+export function scopeTrend(rows, ranges) {
+  const aggs = bucketByMonth(rows, ranges).map(aggregate);
+  return SCOPE_KPIS.map((k) => ({ key: k, label: METRIC[k].label, values: aggs.map((a) => (a.sent || a.cost ? value(a, k) : null)) }));
+}
+
+export function draftScopeTrend(kpis, ranges) {
+  const n = ranges.length - 1;
+  return kpis.map((k) => `• ${k.label}: ${fmt(k.key, k.values[0], { short: true })} (${ranges[0].short}) → ${fmt(k.key, k.values[n], { short: true })} (${ranges[n].short}), ${fmtPct(pctChange(k.values[n], k.values[0]))}${n > 0 ? `; last month ${fmtPct(pctChange(k.values[n], k.values[n - 1]))}` : ''}`).join('\n');
+}
+
+export { pctChange };

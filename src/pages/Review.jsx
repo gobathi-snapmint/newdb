@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bar, BarChart, CartesianGrid, LabelList, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, ComposedChart, LabelList, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Code, FileText, Plus, Presentation, Printer, Sparkles, Trash2, X } from 'lucide-react';
 import { useApp } from '../state';
 import { METRIC, fmt, fmtDelta, fmtPct, tone } from '../lib/metrics';
-import { DIM_TITLE, EXTRA_METRICS, REVIEW_DIMS, REVIEW_METRICS, buildReport, draftSection, scopeFilter, scopeKpis, scopeTitle } from '../lib/review';
+import { DIM_TITLE, EXTRA_METRICS, REVIEW_DIMS, REVIEW_METRICS, buildReport, buildTrendReport, draftScopeTrend, draftSection, draftTrendSection, monthRanges, pctChange, scopeFilter, scopeKpis, scopeTitle, scopeTrend } from '../lib/review';
 import { analyseScope } from '../lib/storyboard';
 import { downloadHtml, downloadMarkdown, downloadPptx } from '../lib/reportExport';
-import { ChartTooltip, PageHead, Seg } from '../components/ui';
+import { ChartTooltip, PageHead, Seg, Select, colorFor } from '../components/ui';
+import { monthLabel } from '../lib/filters';
 
 const PREV = '#94a3b8', CURR = '#4f46e5';
-const NOTES_KEY = 'crm-review-notes-v1', SCOPES_KEY = 'crm-review-scopes-v1', TITLE_KEY = 'crm-review-title-v1';
+const NOTES_KEY = 'crm-review-notes-v1', TREND_NOTES_KEY = 'crm-review-notes-trend-v1', MODE_KEY = 'crm-review-mode-v1', SCOPES_KEY = 'crm-review-scopes-v1', TITLE_KEY = 'crm-review-title-v1';
 const DEFAULT_SCOPES = [
   { id: 'MKP-NU', product: 'MKP', audience: 'NU' },
   { id: 'MKP-RU', product: 'MKP', audience: 'RU' },
@@ -27,32 +28,50 @@ const uniq = (rows, key) => {
 };
 
 export function Review() {
-  const { currRows, prevRows, periods } = useApp();
+  const { currRows, prevRows, periods, filtered, months, maxDate } = useApp();
+  const [mode, setMode] = useState(() => load(MODE_KEY, 'compare'));
+  const [fromM, setFromM] = useState(() => months[Math.max(0, months.length - 7)]);
+  const [toM, setToM] = useState(() => months[months.length - 1]);
+  const [days, setDays] = useState('full');
+  const [cellView, setCellView] = useState('value');
   const [metrics, setMetrics] = useState(REVIEW_METRICS);
   const [dims, setDims] = useState(REVIEW_DIMS);
   const [topN, setTopN] = useState(8);
   const [view, setView] = useState('both');
-  const [notes, setNotes] = useState(() => ({ ...EMPTY_NOTES, ...load(NOTES_KEY, {}) }));
+  // Separate notes for each report type, so a month-on-month review doesn't overwrite a period review.
+  const [notesC, setNotesC] = useState(() => ({ ...EMPTY_NOTES, ...load(NOTES_KEY, {}) }));
+  const [notesT, setNotesT] = useState(() => ({ ...EMPTY_NOTES, ...load(TREND_NOTES_KEY, {}) }));
+  const trend = mode === 'trend';
+  const notes = trend ? notesT : notesC, setNotes = trend ? setNotesT : setNotesC;
   const [scopes, setScopes] = useState(() => load(SCOPES_KEY, DEFAULT_SCOPES));
   const [title, setTitle] = useState(() => load(TITLE_KEY, 'CRM Performance Review'));
   const [busy, setBusy] = useState('');
 
-  useEffect(() => { save(NOTES_KEY, notes); }, [notes]);
+  useEffect(() => { save(NOTES_KEY, notesC); }, [notesC]);
+  useEffect(() => { save(TREND_NOTES_KEY, notesT); }, [notesT]);
+  useEffect(() => { save(MODE_KEY, mode); }, [mode]);
   useEffect(() => { save(SCOPES_KEY, scopes); }, [scopes]);
   useEffect(() => { save(TITLE_KEY, title); }, [title]);
 
   const ordered = [...REVIEW_METRICS, ...EXTRA_METRICS].filter((k) => metrics.includes(k));
   const orderedDims = [...REVIEW_DIMS, 'segment'].filter((d) => dims.includes(d));
-  const report = useMemo(() => buildReport(currRows, prevRows, periods, { metrics: ordered, dims: orderedDims, topN }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [currRows, prevRows, periods, ordered.join(), orderedDims.join(), topN]);
+  const ranges = useMemo(() => monthRanges(months, fromM <= toM ? fromM : toM, fromM <= toM ? toM : fromM, days === 'same', maxDate), [months, fromM, toM, days, maxDate]);
+  const report = useMemo(() => {
+    const opts = { metrics: ordered, dims: orderedDims, topN };
+    return trend ? buildTrendReport(filtered, ranges, opts) : buildReport(currRows, prevRows, periods, opts);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trend, filtered, ranges, currRows, prevRows, periods, ordered.join(), orderedDims.join(), topN]);
 
   const products = useMemo(() => uniq([...currRows, ...prevRows], 'product'), [currRows, prevRows]);
   const audiences = useMemo(() => uniq([...currRows, ...prevRows], 'audience'), [currRows, prevRows]);
   const whys = useMemo(() => scopes.map((s) => {
+    if (trend) {
+      const kpis = scopeTrend(filtered.filter(scopeFilter(s)), ranges);
+      return { ...s, title: scopeTitle(s), trend: true, kpis, empty: kpis[0].values.every((x) => x == null) };
+    }
     const c = currRows.filter(scopeFilter(s)), p = prevRows.filter(scopeFilter(s));
     return { ...s, title: scopeTitle(s), curr: c, prev: p, kpis: scopeKpis(c, p), empty: !c.length && !p.length };
-  }), [scopes, currRows, prevRows]);
+  }), [trend, scopes, currRows, prevRows, filtered, ranges]);
 
   const setMetricNote = (k, t) => setNotes((n) => ({ ...n, metric: { ...n.metric, [k]: t } }));
   const setWhyNote = (id, t) => setNotes((n) => ({ ...n, why: { ...n.why, [id]: t } }));
@@ -67,7 +86,9 @@ export function Review() {
   return (
     <div className="review">
       <PageHead title="Review Report">
-        A detailed review of {report.periodLabel}: every metric with its overall move and a breakup by product line, channel, audience and type of campaign.
+        {trend
+          ? <>A month-on-month review of {report.periodLabel}: every metric's trend across the months, broken up by product line, channel, audience and type of campaign. The months chosen here replace the period in the filter bar; the other filters still apply.</>
+          : <>A detailed review of {report.periodLabel}: every metric with its overall move and a breakup by product line, channel, audience and type of campaign.</>}
         Write your insights in the boxes under each metric, fill in “What has changed and why?” and the action items, then download it as PowerPoint, HTML or Markdown.
         Notes are saved in this browser only.
       </PageHead>
@@ -83,6 +104,21 @@ export function Review() {
             <button className="btn" onClick={() => window.print()}><Printer size={13} /> Print / PDF</button>
           </div>
         </div>
+        <div className="rv-row">
+          <span className="hint">Report type</span>
+          <Seg options={[['compare', 'Period vs comparison (filter bar)'], ['trend', 'Month on month']]} value={mode} onChange={setMode} />
+          {trend && <>
+            <span className="hint">From</span>
+            <Select value={fromM} onChange={setFromM} options={months.map((m) => [m, monthLabel(m)])} />
+            <span className="hint">to</span>
+            <Select value={toM} onChange={setToM} options={months.map((m) => [m, monthLabel(m)])} />
+            <span className="hint">Days</span>
+            <Seg options={[['full', 'Full months'], ['same', toM === maxDate.slice(0, 7) ? `Same dates each month (1–${+maxDate.slice(8)})` : 'Same dates each month']]} value={days} onChange={setDays} />
+            <span className="hint">Tables</span>
+            <Seg options={[['value', 'Values'], ['mom', 'MoM Δ %']]} value={cellView} onChange={setCellView} />
+          </>}
+        </div>
+        {trend && <div className="hint">{ranges.length} months: {ranges.map((r) => r.label).join(' · ')}</div>}
         <div className="rv-row">
           <span className="hint">Metrics</span>
           {[...REVIEW_METRICS, ...EXTRA_METRICS].map((k) => (
@@ -108,14 +144,16 @@ export function Review() {
       </div>
 
       <div className="stack">
-        {report.sections.map((s, i) => (
-          <MetricSection key={s.key} n={i + 1} s={s} view={view} report={report}
-            note={notes.metric[s.key] || ''} setNote={(t) => setMetricNote(s.key, t)} />
+        {report.sections.map((s, i) => (trend
+          ? <TrendSection key={s.key} n={i + 1} s={s} view={view} ranges={ranges} cellView={cellView}
+              note={notes.metric[s.key] || ''} setNote={(t) => setMetricNote(s.key, t)} />
+          : <MetricSection key={s.key} n={i + 1} s={s} view={view} report={report}
+              note={notes.metric[s.key] || ''} setNote={(t) => setMetricNote(s.key, t)} />
         ))}
 
         <div id="rv-why" className="rv-part-title">What has changed and why?</div>
         {whys.map((w) => (
-          <WhyCard key={w.id} w={w} note={notes.why[w.id] || ''} setNote={(t) => setWhyNote(w.id, t)}
+          <WhyCard key={w.id} w={w} ranges={ranges} cellView={cellView} note={notes.why[w.id] || ''} setNote={(t) => setWhyNote(w.id, t)}
             onRemove={() => setScopes((list) => list.filter((x) => x.id !== w.id))} />
         ))}
         <AddScope products={products} audiences={audiences} scopes={scopes} onAdd={(s) => setScopes((list) => [...list, s])} />
@@ -224,8 +262,9 @@ function Breakup({ s, b, view }) {
   );
 }
 
-function WhyCard({ w, note, setNote, onRemove }) {
+function WhyCard({ w, ranges, cellView, note, setNote, onRemove }) {
   const draft = () => {
+    if (w.trend) return draftScopeTrend(w.kpis, ranges);
     const a = analyseScope(w.curr, w.prev, 'cpo');
     return [a.headline, ...(a.findings || []).filter((x) => x.tone === 'bad' || x.tone === 'good').slice(0, 5).map((x) => `• ${x.area}: ${x.text}`)].join('\n');
   };
@@ -235,7 +274,11 @@ function WhyCard({ w, note, setNote, onRemove }) {
         <h2 className="rv-h" style={{ margin: 0 }}>What has changed and why? – {w.title}</h2>
         <button className="btn no-print" style={{ marginLeft: 'auto' }} title="Remove this box" onClick={onRemove}><X size={13} /></button>
       </div>
-      {w.empty ? <div className="hint" style={{ margin: '10px 0' }}>No data for {w.title} in either period with the current filters.</div> : (
+      {w.empty ? <div className="hint" style={{ margin: '10px 0' }}>No data for {w.title} with the current filters.</div> : w.trend ? (
+        <div style={{ margin: '12px 0' }}>
+          <MonthTable label="Metric" ranges={ranges} cellView={cellView} rows={w.kpis.map((k) => ({ group: k.label, metric: k.key, values: k.values }))} />
+        </div>
+      ) : (
         <div className="rv-kpis rv-kpis-wide">
           {w.kpis.map((k) => (
             <div key={k.key}><span>{k.label}</span><b>{fmt(k.key, k.curr, { short: true })}</b>
@@ -286,3 +329,94 @@ function NoteBox({ value, onChange, placeholder, rows = 5, draft }) {
   );
 }
 
+// ---------- month-on-month mode ----------
+const monthPct = (vals, i) => (i > 0 ? pctChange(vals[i], vals[i - 1]) : null);
+
+function MonthTable({ label, ranges, rows, metric, cellView }) {
+  return (
+    <div className="table-wrap" style={{ maxHeight: 'none' }}>
+      <table className="t">
+        <thead><tr><th>{label}</th>{ranges.map((r) => <th key={r.key}>{r.label}</th>)}<th>{ranges[0]?.short} → {ranges[ranges.length - 1]?.short}</th></tr></thead>
+        <tbody>
+          {rows.map((r) => {
+            const k = r.metric || metric, n = r.values.length - 1;
+            const total = pctChange(r.values[n], r.values[0]);
+            return (
+              <tr key={r.group} className={r.others ? 'hint' : ''}>
+                <td>{r.group}</td>
+                {r.values.map((v, i) => {
+                  const p = monthPct(r.values, i);
+                  return <td key={i}>{cellView === 'mom'
+                    ? (i === 0 ? <span className="hint">{fmt(k, v, { short: true })}</span> : <span className={tone(k, p)}>{fmtPct(p)}</span>)
+                    : <>{fmt(k, v, { short: true })}{i > 0 && p != null && <div className={`rv-mom ${tone(k, p)}`}>{fmtPct(p)}</div>}</>}</td>;
+                })}
+                <td><b className={tone(k, total)}>{fmtPct(total)}</b></td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function TrendSection({ n, s, view, ranges, cellView, note, setNote }) {
+  const f = (v) => fmt(s.key, v, { short: true });
+  const data = ranges.map((r, i) => ({ name: r.label, value: s.values[i] }));
+  return (
+    <section id={`rv-${s.key}`} className="card rv-section">
+      <h2 className="rv-h"><span className="sb-num">{n}.</span> {s.title}</h2>
+      <div className="rv-sub">{s.overallTitle} — month on month</div>
+      {view !== 'tables' && (
+        <div style={{ height: 240 }}>
+          <ResponsiveContainer>
+            <ComposedChart data={data} margin={{ top: 18, right: 12, left: 4, bottom: 0 }}>
+              <CartesianGrid vertical={false} stroke="var(--border)" />
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--muted)' }} />
+              <YAxis tick={{ fontSize: 10.5, fill: 'var(--muted)' }} tickFormatter={f} width={60} domain={s.isCount ? [0, 'auto'] : ['auto', 'auto']} />
+              <Tooltip cursor={{ fill: 'var(--surface2)' }} content={<ChartTooltip format={(v) => fmt(s.key, v)} />} />
+              {s.isCount
+                ? <Bar dataKey="value" name={s.overallTitle} fill={CURR} radius={[4, 4, 0, 0]} isAnimationActive={false}><LabelList dataKey="value" position="top" formatter={f} style={{ fontSize: 10.5, fill: 'var(--muted)' }} /></Bar>
+                : <Line dataKey="value" name={s.overallTitle} stroke={CURR} strokeWidth={2.6} dot={{ r: 4 }} isAnimationActive={false}><LabelList dataKey="value" position="top" formatter={f} style={{ fontSize: 10.5, fill: 'var(--muted)' }} /></Line>}
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+      <MonthTable label="Overall" metric={s.key} ranges={ranges} cellView={cellView} rows={[{ group: s.overallTitle, values: s.values }]} />
+      <div className="stack" style={{ marginTop: 16 }}>
+        {s.breakdowns.map((b) => (
+          <div key={b.dim} className="rv-breakup">
+            <div className="rv-sub">Breakup by {b.title.toLowerCase()} — month on month</div>
+            {view !== 'tables' && <GroupTrend s={s} b={b} ranges={ranges} />}
+            {view !== 'charts' && <MonthTable label={b.title} metric={s.key} ranges={ranges} cellView={cellView} rows={b.series} />}
+            {b.summary && <div className="hint" style={{ marginTop: 6 }}>{b.summary}</div>}
+          </div>
+        ))}
+      </div>
+      <div className="rv-sub" style={{ marginTop: 14 }}>Insights — what did we notice?</div>
+      <NoteBox value={note} onChange={setNote} placeholder={`What stands out in ${s.title} across the months? Why did it move?`}
+        draft={() => draftTrendSection(s, ranges)} />
+    </section>
+  );
+}
+
+function GroupTrend({ s, b, ranges }) {
+  const data = ranges.map((r, i) => Object.fromEntries([['name', r.label], ...b.series.map((g, j) => [`g${j}`, g.values[i]])]));
+  return (
+    <div style={{ height: 280 }}>
+      <ResponsiveContainer>
+        <LineChart data={data} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
+          <CartesianGrid vertical={false} stroke="var(--border)" />
+          <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--muted)' }} />
+          <YAxis tick={{ fontSize: 10.5, fill: 'var(--muted)' }} tickFormatter={(v) => fmt(s.key, v, { short: true })} width={60} />
+          <Tooltip content={<ChartTooltip format={(v) => fmt(s.key, v)} />} />
+          <Legend wrapperStyle={{ fontSize: 11.5 }} />
+          {b.series.map((g, j) => (
+            <Line key={g.group} dataKey={`g${j}`} name={g.group} stroke={g.others ? PREV : colorFor(j)} strokeDasharray={g.others ? '4 3' : undefined}
+              strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} connectNulls />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
